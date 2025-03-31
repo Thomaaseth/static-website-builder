@@ -73,5 +73,3 @@ class TestTextNode(unittest.TestCase):
         self.assertEqual(html_node.props, {"src": url, "alt": alt_text})
 
 
-if __name__ == "__main__":
-    unittest.main()

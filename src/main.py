@@ -1,5 +1,6 @@
 from textnode import *
 from htmlnode import *
+from blocknode import *
 import re
 
 
@@ -64,7 +65,142 @@ def extract_markdown_links(text):
     new_links_tuple = re.findall(r"(?<!!)\[([^\[\]]*)\]\(([^\(\)]*)\)", text)
     return new_links_tuple
 
+def split_nodes_image(old_nodes):
+    new_nodes = []
+
+    for old_node in old_nodes:
+        if old_node.text_type != TextType.TEXT:
+            new_nodes.append(old_node)
+            continue
+    
+        images = extract_markdown_images(old_node.text)
+
+        if not images:
+            new_nodes.append(old_node)
+            continue
+
+        remaining_text = old_node.text
+
+        for alt_text, image_url in images:
+            image_markdown = f"![{alt_text}]({image_url})"
+            parts = remaining_text.split(image_markdown, 1)
             
+            # Create a node for the text before the image (if not empty)
+            if parts[0]:
+                new_nodes.append(TextNode(parts[0], TextType.TEXT))
+            
+            # Create a node for the image
+            new_nodes.append(TextNode(alt_text, TextType.IMAGE, image_url))
+
+            # Update remaining text for next iteration
+            if len(parts) > 1:
+                remaining_text = parts[1]
+            else:
+                remaining_text = ""
+        
+        # After processing all images, don't forget to add any remaining text
+        if remaining_text:
+            new_nodes.append(TextNode(remaining_text, TextType.TEXT))
+    
+    return new_nodes
+
+def split_nodes_link(old_nodes):
+    new_nodes = []
+
+    for old_node in old_nodes:
+        if old_node.text_type != TextType.TEXT:
+            new_nodes.append(old_node)
+            continue
+    
+        links = extract_markdown_links(old_node.text)
+
+        if not links:
+            new_nodes.append(old_node)
+            continue
+
+        remaining_text = old_node.text
+
+        for link_text, link_url in links:
+            link_markdown = f"[{link_text}]({link_url})"
+            parts = remaining_text.split(link_markdown, 1)
+            
+            # Create a node for the text before the link (if not empty)
+            if parts[0]:
+                new_nodes.append(TextNode(parts[0], TextType.TEXT))
+            
+            # Create a node for the link
+            new_nodes.append(TextNode(link_text, TextType.LINK, link_url))
+
+            # Update remaining text for next iteration
+            if len(parts) > 1:
+                remaining_text = parts[1]
+            else:
+                remaining_text = ""
+        
+        # After processing all links, don't forget to add any remaining text
+        if remaining_text:
+            new_nodes.append(TextNode(remaining_text, TextType.TEXT))
+
+    return new_nodes
+
+def text_to_textnodes(text):
+    new_nodes = [TextNode(text, TextType.TEXT)]
+    # For bold text - need to pass delimiter "**" and TextType.BOLD
+    new_nodes = split_nodes_delimiter(new_nodes, "**", TextType.BOLD)
+    
+    # For italic text - need to pass delimiter "_" and TextType.ITALIC
+    new_nodes = split_nodes_delimiter(new_nodes, "_", TextType.ITALIC)
+    
+    # For code blocks - need to pass delimiter "`" and TextType.CODE
+    new_nodes = split_nodes_delimiter(new_nodes, "`", TextType.CODE)
+    new_nodes = split_nodes_image(new_nodes)
+    new_nodes = split_nodes_link(new_nodes)
+    return new_nodes
+
+def markdown_to_blocks(markdown):
+    new_blocks = []
+    splitted_blocks = markdown.split("\n\n")
+    for splitted_block in splitted_blocks:
+        stripped = splitted_block.strip()
+        if stripped:
+            cleaned_lines = [line.strip() for line in stripped.split("\n")]
+            normalized_block = "\n".join(cleaned_lines)
+            new_blocks.append(normalized_block)
+
+    return new_blocks
+
+def block_to_block_type(block):
+    if block.startswith('#'):
+        count = 0
+        for char in block:
+            if char == '#':
+                count += 1
+            else:
+                break
+        if 1 <= count <= 6 and block[count] == ' ':
+            return BlockType.HEADING
+            
+    if block.startswith('```') and block.rstrip().endswith('```'):
+        return BlockType.CODE
+    
+    lines = block.split('\n')
+
+    if all(line.startswith('>') for line in lines):
+        return BlockType.QUOTE
+    
+    if all(line.startswith('- ') for line in lines):
+        return BlockType.ULIST
+    
+    is_ordered = True
+    for i, line in enumerate(lines, 1):
+        if not line.startswith(f"{i}. "):
+            is_ordered = False
+            break
+    if is_ordered:
+        return BlockType.OLIST
+    
+    return BlockType.PARAGRAPH
+
 def main():
 
     node = TextNode("test", TextType.LINK, "www.google.com")
